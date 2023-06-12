@@ -1,0 +1,138 @@
+```{r}
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(ggpubr)
+```
+
+# Read, interpret the data 
+```{r}
+video_games <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/1da2c24e05f5703f62aa744d4914b2aac0afd851/data/2019/2019-07-30/video_games.csv")
+```
+
+```{r}
+# display sample data
+head(video_games)
+```
+
+```{r}
+# dimenstions
+dim(video_games)
+```
+
+```{r}
+# basic stats
+summary(select_if(video_games, is.numeric))
+```
+
+```{r}
+# missing observations
+colSums(is.na(video_games))
+```
+
+```{r}
+# zero observations
+colSums(video_games == 0)
+```
+
+```{r}
+ggdensity(video_games$average_playtime, xlab = "average_playtime distribution")
+```
+
+# Data cleaning, preparation
+```{r}
+# remove rows where no metascore
+video_games_clean <- video_games %>%
+    filter(!is.na(metascore)) %>%
+    filter(!is.na(price)) %>%
+    filter(average_playtime > 0) %>%
+    mutate(release_year = as.numeric(str_sub(release_date, -4, -1)) - 2000) %>%
+    select(release_year, publisher, price, average_playtime, metascore)
+```
+
+
+```{r}
+summary(video_games_clean)
+dim(video_games_clean)
+glimpse(video_games_clean)
+video_games_clean
+```
+
+```{r}
+video_games_year_avg_price <- video_games_clean %>%
+    group_by(release_year) %>%
+    summarise(avg_price = mean(price)) %>%
+    arrange(desc(release_year))
+
+glimpse(video_games_year_avg_price)
+video_games_year_avg_price
+video_games_year_avg_price <- na.omit(video_games_year_avg_price)
+
+ggplot(data = video_games_year_avg_price, aes(x = release_year, y = avg_price)) +
+    geom_bar(
+        colour = "red2", stat = "identity",
+        position = position_dodge(),
+        size = .2, fill = "blue"
+    ) +
+    xlab("year") +
+    ylab("Average metascore") +
+    ggtitle("Metascore by year") +
+    theme_bw() +
+    geom_text(aes(label = round(avg_price, 2)), position = position_dodge(width = 0.9), vjust = -0.25) +
+    theme(plot.title = element_text(hjust = 0.5))
+
+video_games_numeric <- select_if(video_games_clean, is.numeric)
+cor(video_games_numeric)
+```
+
+# Hypothesis testing
+### Does release year predict higher price?
+### deciding with z-test
+
+```{r}
+old_video_games <- video_games_clean %>%
+    filter(release_year < 13)
+
+new_vide_games <- video_games_clean %>%
+    filter(release_year >= 13)
+
+m1 <- mean(old_video_games$price)
+m1
+
+m2 <- mean(new_vide_games$price)
+m2
+
+n <- nrow(old_video_games)
+n
+
+m <- nrow(new_vide_games)
+m
+```
+
+```{r}
+se <- sqrt(var(old_video_games$price) / n + var(new_vide_games$price) / m)
+se
+
+Z <- (m1 - m2) / se
+Z
+
+Zalpha <- qnorm(0.9)
+Zalpha
+
+# Zalpha < abs(Z) => there is significant difference in prices within the 2 sets
+```
+
+## Regression for predicting metascore
+```{r}
+bc <- MASS::boxcox(price ~ release_year + average_playtime, data = video_games_clean)
+
+lambda <- bc$x[which.max(bc$y)]
+lambda
+
+video_games_clean$price2 <- ((video_games_clean$price^lambda) - 1) / lambda
+
+## polynominal regression for predicting metascore
+fit <- lm(price2 ~ poly(average_playtime, 2) + poly(release_year, 5), data = video_games_clean)
+summary(fit)
+plot(fit)
+```
